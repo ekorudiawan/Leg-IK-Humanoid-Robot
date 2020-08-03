@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import PyKDL as kdl
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 
@@ -61,6 +62,14 @@ def draw_links(ax, origin_frame=np.eye(4), target_frame=np.eye(4)):
     z = [origin_frame[2,3], target_frame[2,3]]
     ax.plot(x, y, z, 'k')
 
+def pose_error(f_target, f_result):
+    f_diff = f_target.Inverse() * f_result
+    [dx, dy, dz] = f_diff.p
+    [drz, dry, drx] = f_diff.M.GetEulerZYX()
+    error = np.sqrt(dx**2 + dy**2 + dz**2 + drx**2 + dry**2 + drz**2)
+    error_list = [dx, dy, dz, drx, dry, drz]
+    return error, error_list
+
 def main():
     minbound = -20
     maxbound = 20
@@ -77,6 +86,8 @@ def main():
     y_from_base = 55
     z_from_base = -500
     alpha = np.radians(10)
+
+    f_target = kdl.Frame(kdl.Rotation.RPY(0,0,alpha), kdl.Vector(x_from_base, y_from_base, z_from_base))
 
     x_from_hip = (x_from_base - 0)
     y_from_hip = (y_from_base - D)
@@ -105,7 +116,7 @@ def main():
 
     # Konfigurasi joint
     q_hip_yaw = alpha
-    qy = np.arctan2(y_from_hip_yaw,np.sign(z_from_hip_yaw)*z_from_hip_yaw)
+    qy = np.arctan2(y_from_hip_yaw, np.sign(z_from_hip_yaw)*z_from_hip_yaw)
     print("qy :", np.degrees(qy))
     q_hip_roll = qy
     q_hip_pitch = -(qx+qb)
@@ -146,6 +157,11 @@ def main():
     sole_from_ankle = TF(dz=-F)
     sole = ankle.dot(sole_from_ankle) # sole frame
 
+    f_result = kdl.Frame(kdl.Rotation(sole[0,0], sole[0,1], sole[0,2],
+                                      sole[1,0], sole[1,1], sole[1,2],
+                                      sole[2,0], sole[2,1], sole[2,2]),
+                         kdl.Vector(sole[0,3], sole[1,3], sole[2,3]))
+
     draw_axis(ax, scale=20, A=base)
     draw_links(ax, origin_frame=base, target_frame=hip_yaw)
     draw_axis(ax, scale=20, A=hip_yaw)
@@ -159,15 +175,14 @@ def main():
     draw_axis(ax, scale=20, A=sole)
     # draw_links(ax, origin_frame=hip, target_frame=ankle)
 
-    print("Input Position")
-    print("x :", x_from_base)
-    print("y :", y_from_base)
-    print("z :", z_from_base)
+    print("Frame Target")
+    print(f_target)
+    print("Frame Result")
+    print(f_result)
+    error, error_list = pose_error(f_target, f_result)
+    print("Error :", error)
+    print("Error list :", error_list)
     print("Solution")
-    print("x :", sole[0,3])
-    print("y :", sole[1,3])
-    print("z :", sole[2,3])
-    print("Leg joints solution")
     print("Q hip_yaw :", q_hip_yaw)
     print("Q hip_roll :", q_hip_roll)
     print("Q hip_pitch :", q_hip_pitch)
