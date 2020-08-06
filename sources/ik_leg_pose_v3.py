@@ -3,6 +3,7 @@ import numpy as np
 import PyKDL as kdl
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
+from scipy.spatial import distance
 
 def set_label(ax, min_scale=-10, max_scale=10):
     ax.set_xlim(min_scale, max_scale)
@@ -71,6 +72,8 @@ def pose_error(f_target, f_result):
     return error, error_list
 
 def main():
+    epsilon = np.finfo(np.float32).eps
+    err_min = 1e-2
     # Konfigurasi link in mm
     CROTCH_TO_HIP = 0.055 # Jarak croth ke hip
     UPPER_HIP = 0.050 # Jarak hip yaw ke hip roll pitch
@@ -79,62 +82,52 @@ def main():
     ANKLE_TO_SOLE = 0.053 # Jarak ankle ke sole
 
     # Input posisi
-    x = -0.100
+    x = -0.10
     y = 0.055 + 0.05
     z = -0.500
-    yaw = np.radians(45)
+    yaw = np.radians(20)
 
     f_target = kdl.Frame(kdl.Rotation.RPY(0, 0, yaw), kdl.Vector(x, y, z))
 
     x_from_hip = (x - 0)
     y_from_hip = (y - CROTCH_TO_HIP)
-    z_from_hip = (z + UPPER_HIP + ANKLE_TO_SOLE)
+    z_from_hip = (z + (UPPER_HIP + ANKLE_TO_SOLE))
 
     xa = x_from_hip
-    ya_1 = xa*np.tan(yaw)
-    xb_1 = xa / np.cos(yaw)
-    beta = np.radians(90) - yaw
-    ya_2 = (y_from_hip-ya_1)
-    yb = ya_2 * np.sin(beta)
-    xb_2 = yb / np.tan(beta)
-    xb = xb_1 + xb_2
-
+    ya = xa * np.tan(yaw)
+    beta = np.pi/2 - yaw
+    yb = (y_from_hip - ya)
+    gamma = np.pi/2 - beta
+    xb = xa / np.cos(yaw) + np.sin(gamma) * (y_from_hip - ya)
     x_from_hip_yaw = xb
     y_from_hip_yaw = yb
     z_from_hip_yaw = z_from_hip
     # Inverse kinematics
     # Step 1 mencari C
-    C = np.sqrt(x_from_hip_yaw**2+y_from_hip_yaw**2+z_from_hip_yaw**2)
-    print("C :", C)
-    qx = np.arcsin(x_from_hip_yaw/C)
-    print("qx :", np.degrees(qx))
-    qb = np.arccos((C/2)/HIP_TO_KNEE)
-    print("qb :", np.degrees(qb))
-
+    C = np.sqrt(xb**2 + yb**2 + z_from_hip_yaw**2)
+    
+    zb = np.sqrt(yb**2 + z_from_hip_yaw**2)
+    zc = np.sqrt(xb**2 + z_from_hip_yaw**2)
+    zeta = np.arctan2(yb, zc)
+    Cb = np.sign(xb)*np.sqrt(C**2 - zb**2)
     # Konfigurasi joint
     q_hip_yaw = yaw
-    qy = np.arctan2(y_from_hip_yaw, np.sign(z_from_hip_yaw)*z_from_hip_yaw)
-    print("qy :", np.degrees(qy))
-    q_hip_roll = qy
-    q_hip_pitch = -(qx+qb)
+    print("hip_yaw :", np.degrees(q_hip_yaw))
+    # q_hip_roll = np.arctan2(yb, C)
+    q_hip_roll = zeta 
+    # q_hip_roll = 0.0
+    print("q_hip_roll", q_hip_roll)
+    print("hip_roll :", np.degrees(q_hip_roll))
+    q_hip_pitch = -(np.arctan2(Cb, np.sign(z_from_hip_yaw)*z_from_hip_yaw) + np.arccos((C/2)/HIP_TO_KNEE))
+    print("cb ", Cb)
     print("hip_pitch :", np.degrees(q_hip_pitch))
-    
-    q_ankle_roll = -qy
-    qc = np.radians(180) - (qb*2)
-    print("qc :", np.degrees(qc))
-    q_knee = np.radians(180)-qc
-
-    # ini bukan x
-    qz = np.arcsin(abs(z_from_hip_yaw)/C)
-    print("qz :", np.degrees(qz))
-    qa = qb
-
-    if xb >= 0:
-        q_ankle_pitch = -(np.radians(90) - (np.radians(180) - (qz + qa)))
-    else:
-        q_ankle_pitch = (qz-qa-np.radians(90))
-
-    print("ankle pitch :", np.degrees(q_ankle_pitch))
+    q_knee = np.pi-(2*(np.arcsin((C/2)/HIP_TO_KNEE)))
+    # q_knee = 0.1
+    print("knee :", np.degrees(q_knee))
+    q_ankle_pitch = np.pi/2 - (np.arctan2(np.sign(z_from_hip_yaw)*z_from_hip_yaw, Cb) + np.arccos((C/2)/HIP_TO_KNEE))
+    print("ankle_pitch :", np.degrees(q_ankle_pitch))
+    q_ankle_roll = -q_hip_roll
+    print("ankle_roll :", np.degrees(q_ankle_roll))
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -183,14 +176,8 @@ def main():
     error, error_list = pose_error(f_target, f_result)
     print("Error :", error)
     print("Error list :", error_list)
-    print("Solution")
-    print("Q hip_yaw :", q_hip_yaw)
-    print("Q hip_roll :", q_hip_roll)
-    print("Q hip_pitch :", q_hip_pitch)
-    print("Q knee :", q_knee)
-    print("Q ankle_pitch :", q_ankle_pitch)
-    print("Q_ankle_roll :", q_ankle_roll)
-
+    if error < err_min:
+        print("PASS")
     ax.auto_scale_xyz([-0.500, 0.500], [-0.500, 0.500], [-0.500, 0.500])
     plt.show()
     
